@@ -1,0 +1,73 @@
+---
+title: "Random Forest"
+author: "Vi Ly"
+date: "October 4, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load file to an R data frame. Assume column name that represents the class label is "class"
+
+Prepare training 
+```{r}
+library(data.table)
+training <- read.csv('https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Train/4mertable.train.txt',header = TRUE)
+training <- training[,names(training) != "DNA"]
+head(training)
+training <- training[sample(nrow(training), nrow(training)), ] #randomizes the rows
+training$Class[training$Class == "1"] <- "negative"
+training$Class[training$Class == "0"] <- "positive"
+training$Class <- factor(training$Class)
+```
+
+Preparing testing data
+```{r}
+testing = read.csv("https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Test/4mertable.test.txt")
+#testing <- read.table(file,sep=",",header=TRUE)
+testing <- testing[,names(testing) != "DNA"]
+testing <- testing[sample(nrow(testing), nrow(testing)), ] #randomizes the rows
+testing$Class[testing$Class == "1"] <- "negative"
+testing$Class[testing$Class == "0"] <- "positive"
+testing$Class <- factor(testing$Class)
+```
+
+
+Load R libraries for model generation
+```{r}
+suppressMessages(library(caret))
+suppressMessages(library(e1071))
+```
+CARET Random Forest
+```{r}
+do.RF <- function(training)
+{  
+   set.seed(313)
+   n <- dim(training)[2]
+   gridRF <- expand.grid(mtry = seq(from=0,by=as.integer(n/10),to=n)[-1]) #may need to change this depend on your data size
+   ctrl.crossRF <- trainControl(method = "cv",number = 10,classProbs = TRUE,savePredictions = TRUE,allowParallel=TRUE)
+   rf.Fit <- train(class ~ .,data = training,method = "rf",metric = "Accuracy",preProc = c("center", "scale"),
+                  ntree = 200, tuneGrid = gridRF,trControl = ctrl.crossRF)
+   rf.Fit
+}
+```
+CARET Random forest
+```{r}
+rf.Fit <- do.RF(training)
+print(rf.Fit)
+#predict using tuned random forest
+Pred <-  predict(rf.Fit,testing)
+cm <- confusionMatrix(Pred,testing$class)
+print(cm)
+```
+
+```{r}
+glm.fit <- glm_binomial(training)
+print(glm.fit)
+#tmp_testing <- testing
+#tmp_testing$class <- NULL
+#Pred <- predict.glm(glm.fit,tmp_testing,type="response")
+#print(Pred)
+```

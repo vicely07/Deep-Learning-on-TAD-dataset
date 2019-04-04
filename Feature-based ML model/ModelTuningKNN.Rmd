@@ -1,0 +1,208 @@
+---
+title: "Tuning of predictive models using CARET and e1071 packages."
+author: "Ben Soibam"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load file to an R data frame. Assume column name that represents the class label is "class"
+
+Prepare training 
+```{r}
+training <- read.csv('https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Train/4mertable.train.txt',header = TRUE)
+training <- training[,names(training) != "DNA"]
+#Data$Class <- factor(Data$Class)
+training <- training[sample(nrow(training), nrow(training)), ] #randomizes the rows
+training$Class[training$Class == "1"] <- "negative"
+training$Class[training$Class == "0"] <- "positive"
+#intrain <- createDataPartition(y = Data$Class,p = 0.8,list = FALSE) #split data
+training$Class <- factor(training$Class)
+```
+
+Preparing testing data
+```{r}
+testing = read.csv("https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Test/4mertable.test.txt")
+testing <- testing[,names(testing) != "DNA"]
+#Data$Class <- factor(Data$Class)
+testing <- testing[sample(nrow(testing), nrow(testing)), ] #randomizes the rows
+testing$Class[testing$Class == "1"] <- "negative"
+testing$Class[testing$Class == "0"] <- "positive"
+#intrain <- createDataPartition(y = Data$Class,p = 0.8,list = FALSE) #split data
+testing$Class <- factor(testing$Class)
+```
+
+
+Load R libraries for model generation
+```{r}
+suppressMessages(library(caret))
+suppressMessages(library(e1071))
+#suppressMessages(library(doParallel)) # only if you want to perform parallel processing
+#suppressMessages(registerDoParallel(10)) # Registrer a parallel backend for train
+```
+
+Let's go through the basic model tuning process using a k-nearest neighbor model (knn).
+
+First, set up a range of values for the parameters to tune. For knn it is 'kmax' - the number of nearest neighbors.
+```{r}
+grid = expand.grid(kmax=c(1:20),distance=2,kernel="optimal")
+```
+Second, set up the sampling method and other controls for training using trainControl function from CARET. Let's choose "cv" for cross validation.
+```{r}
+ctrl.cross <- trainControl(method="cv",number=10, classProbs=TRUE,savePredictions=TRUE)
+```
+Third, tune the model using train function from CARET.
+```{r}
+#Requires package 'kknn' to run
+knnFit.cross <- train(Class ~ .,
+                     data = training, # training data
+                     method ="kknn",  # model  
+                     metric="Accuracy", #evaluation metric
+                     preProc=c("center","scale"), # data to be scaled
+                     tuneGrid = grid, # range of parameters to be tuned
+                     trControl=ctrl.cross) # training controls
+```
+Fourth, Display and plot results
+```{r}
+print(knnFit.cross)
+plot(knnFit.cross)
+```
+
+Fifth, Perform predictions on the testing set, and confusion matrix. Accuracies on testing and training should be similar.
+```{r}
+Pred <- predict(knnFit.cross,testing)
+cm<- confusionMatrix(Pred,testing$Class)
+print(cm)
+```
+
+If the training accuray is higher than the testing accuracy it means the model needs to be less complicated. 
+
+### To make things easier, Let's create different R functions for different models.
+
+CARET decision trees
+```{r}
+#this is based on CARET, but sometimes doesn't run well, use the e1071 instead
+do.DT <- function(training)
+{
+  set.seed(1)
+  grid <- expand.grid(cp = 2^seq(from = -30 , to= 0, by = 2) )
+  ctrl.cross <- trainControl(method = "cv", number = 5,classProbs = TRUE)
+  dec_tree <-   train(Class ~ ., data= Data,perProc = c("center", "scale"),
+      method = 'rpart', #rpart for classif. dec tree
+      metric ='Accuracy',
+      tuneGrid= grid, trControl = ctrl.cross
+    )
+  dec_tree
+}
+```
+
+e1071 decision trees
+```{r}
+library(e1071)
+do.e071.DT <- function(training)
+{
+ 
+ dec_tree <- tune.rpart(class ~ . , data = training , minsplit=c(5,10,15,20),cp = 2^seq(from = -20 , to= 0, by = 2) )
+ dec_tree
+}
+```
+CARET Random Forest
+```{r}
+do.RF <- function(training)
+{  
+   set.seed(313)
+   n <- dim(training)[2]
+   gridRF <- expand.grid(mtry = seq(from=0,by=as.integer(n/10),to=n)[-1]) #may need to change this depend on your data size
+   ctrl.crossRF <- trainControl(method = "cv",number = 10,classProbs = TRUE,savePredictions = TRUE,allowParallel=TRUE)
+   rf.Fit <- train(class ~ .,data = training,method = "rf",metric = "Accuracy",preProc = c("center", "scale"),
+                  ntree = 200, tuneGrid = gridRF,trControl = ctrl.crossRF)
+   rf.Fit
+}
+```
+
+
+
+
+This is an example of CARET boosted trees using C50.
+```{r}
+do.Boost <- function(training)
+{ 
+ #trials = number of boosting iterations, or (simply number of trees)
+ #winnow = remove unimportant predictors
+ gridBoost <- expand.grid(model="tree",trials=seq(from=1,by=2,to=100),winnow=FALSE)
+ set.seed(1)
+ ctrl.crossBoost <- trainControl(method = "cv",number = 10,classProbs = TRUE,savePredictions = TRUE,allowParallel=TRUE)
+ C5.0.Fit <- train(class ~ .,data = training,method = "C5.0",metric = "Accuracy",preProc = c("center", "scale"),
+                  tuneGrid = gridBoost,trControl = ctrl.crossBoost)
+
+C5.0.Fit
+}
+```
+
+glm binary class logistic regression. No Tuning involved.
+```{r}
+glm_binomial <- function(training)
+{
+ glmb.fit <- train(class ~ ., data = training, method="glm",family="binomial")
+ glmb.fit
+}
+```
+
+## Now to tune models, simply call the functions
+
+e1071 decision trees
+```{r}
+DT.Fit <- do.e071.DT(training)
+print(DT.Fit)
+#predict using tuned DT.Fit
+Pred <-  predict(DT.Fit$best.model,testing,type="Class")
+cm <- confusionMatrix(Pred,testing$Class)
+print(cm)
+```
+
+
+
+CARET Random forest
+```{r}
+rf.Fit <- do.RF(Data)
+print(rf.Fit)
+#predict using tuned random forest
+Pred <-  predict(rf.Fit,testing)
+cm <- confusionMatrix(Pred,testing$Class)
+print(cm)
+```
+
+```{r}
+glm.fit <- glm_binomial(training)
+print(glm.fit)
+#tmp_testing <- testing
+#tmp_testing$class <- NULL
+#Pred <- predict.glm(glm.fit,tmp_testing,type="response")
+#print(Pred)
+```
+glm multiclass logistic regression. No Tuning involved.
+```{r}
+
+glmnet_multinomial <- function(training)
+{
+ glm.fit <- train(class ~ ., data = training, method="glm",family="multinomial") 
+ glm.fit
+}
+```
+
+CARET boosted trees
+```{r}
+boost.Fit <- do.Boost(training)
+print(boost.Fit)
+Pred <-  predict(boost.Fit,testing)
+cm <- confusionMatrix(Pred,testing$class)
+print(cm)
+```
+
+
+

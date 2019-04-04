@@ -1,0 +1,64 @@
+---
+title: "Boosted Tree"
+author: "Vi Ly"
+date: "October 4, 2018"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load file to an R data frame. Assume column name that represents the class label is "class"
+
+Prepare training 
+```{r}
+training <- read.csv('https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Train/4mertable.train.txt',header = TRUE)
+training <- training[,names(training) != "DNA"]
+#head(training)
+training <- training[sample(nrow(training), nrow(training)), ] #randomizes the rows
+training$Class[training$Class == "1"] <- "negative"
+training$Class[training$Class == "0"] <- "positive"
+training$Class <- factor(training$Class)
+```
+
+Preparing testing data
+```{r}
+testing = read.csv("https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Test/4mertable.test.txt")
+testing <- testing[,names(testing) != "DNA"]
+testing <- testing[sample(nrow(testing), nrow(testing)), ] #randomizes the rows
+testing$Class[testing$Class == "1"] <- "negative"
+testing$Class[testing$Class == "0"] <- "positive"
+testing$Class <- factor(testing$Class)
+```
+
+
+Load R libraries for model generation
+```{r}
+suppressMessages(library(caret))
+suppressMessages(library(e1071))
+```
+This is an example of CARET boosted trees using C50.
+```{r}
+do.Boost <- function(training)
+{ 
+ #trials = number of boosting iterations, or (simply number of trees)
+ #winnow = remove unimportant predictors
+ gridBoost <- expand.grid(model="tree",trials=seq(from=1,by=2,to=100),winnow=FALSE)
+ set.seed(1)
+ ctrl.crossBoost <- trainControl(method = "cv",number = 10,classProbs = TRUE,savePredictions = TRUE,allowParallel=TRUE)
+ C5.0.Fit <- train(class ~ .,data = training,method = "C5.0",metric = "Accuracy",preProc = c("center", "scale"),
+                  tuneGrid = gridBoost,trControl = ctrl.crossBoost)
+
+C5.0.Fit
+}
+```
+
+CARET boosted trees
+```{r}
+boost.Fit <- do.Boost(training)
+print(boost.Fit)
+Pred <-  predict(boost.Fit,testing)
+cm <- confusionMatrix(Pred,testing$class)
+print(cm)
+```

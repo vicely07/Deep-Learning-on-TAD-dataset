@@ -1,0 +1,190 @@
+---
+title:  'Tuning of SVM models using CARET and e1071 packages.'
+author: 'Ben Soibam'
+output: html_document
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+```{r}
+suppressMessages(library(caret))
+suppressMessages(library(e1071))
+```
+
+```{r}
+training <- read.csv('https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Train/4mertable.train.txt',header = TRUE)
+training <- training[,names(training) != "DNA"]
+#head(training)
+training <- training[sample(nrow(training), nrow(training)), ] #randomizes the rows
+training$Class[training$Class == "1"] <- "negative"
+training$Class[training$Class == "0"] <- "positive"
+training$Class <- factor(training$Class)
+```
+
+```{r}
+testing = read.csv("https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Test/4mertable.test.txt")
+testing <- testing[,names(testing) != "DNA"]
+#Data$Class <- factor(Data$Class)
+testing <- testing[sample(nrow(testing), nrow(testing)), ] #randomizes the rows
+testing$Class[testing$Class == "1"] <- "negative"
+testing$Class[testing$Class == "0"] <- "positive"
+#intrain <- createDataPartition(y = Data$Class,p = 0.8,list = FALSE) #split data
+testing$Class <- factor(testing$Class)
+```
+
+## R functions for SVM models
+
+First, Lets build R functions for SVM models with different kernels. Here, we will use CARET and e1071 packages. We will follow similar procedure of setting up the training discussed in previous tutorial.
+
+Radial svm from e1071
+```{r}
+do.e1071RadialSVM <- function(training)
+{
+  svm.Fit <- tune.svm(class~., data = training, 
+                cost = 2^seq(from=-4,by = 1, to =6), # cost parameter
+                kernel = "radial", gamma=c(.5,1,2))  # gamma is the kernel parameter 'sigma' in CARET
+  svm.Fit
+}
+```
+
+
+Radial basis kernel svm from CARET
+```{r}
+suppressMessages(library(kernlab))
+do.RadialKernelSVM <- function(training)
+{
+  set.seed(1)
+  tmpTraining <- training
+  tmpTraining$class <- NULL
+  sigma=sigest(as.matrix(tmpTraining)) # sigest returns 3 values of sigma 
+  grid <- expand.grid(sigma = sigma , C = 2^seq(from=-4,by = 1, to =8)) # set up sigma and cost parameters
+  ctrl.cross <- trainControl(method = "cv", number = 5,classProbs = TRUE,savePredictions=TRUE)
+  svm.Fit <- train(class ~ ., data= training,perProc = c("center", "scale"),
+      method = 'svmRadial', 
+      metric ='Accuracy',
+      tuneGrid= grid,
+      trControl = ctrl.cross
+    )
+  svm.Fit
+}
+```
+Linear kernel svm
+```{r}
+do.LinearKernelSVM <- function(training)
+{
+  set.seed(1)
+  grid <- expand.grid(C = 2^seq(from=-4,by = 1, to =8)) # set up cost parameter. For linear svm it doesn't have kernel parameter.
+  print("linear Kernel SVM")
+  ctrl.cross <- trainControl(method = "cv", number = 5,classProbs = TRUE,savePredictions=TRUE)
+  svm.Fit <- train(class ~ ., data= training,perProc = c("center", "scale"),
+      method = 'svmLinear', 
+      metric ='Accuracy',
+      tuneGrid= grid,
+      trControl = ctrl.cross
+    )
+  svm.Fit
+}
+```
+Polynomial kernel svm
+```{r}
+
+do.PolyKernelSVM <- function(training)
+{
+  set.seed(1)
+  grid <- expand.grid(scale = 1, degree = c(1,2,3), C = 2^seq(from=-4,by = 1, to =8)) # set up sigma and cost parameters
+  print("Poly Kernel SVM") 
+  ctrl.cross <- trainControl(method = "cv", number = 5,classProbs = TRUE,savePredictions=TRUE)
+  svm.Fit <- train(class ~ ., data= training,perProc = c("center", "scale"),
+      method = 'svmPoly', 
+      metric ='Accuracy',
+      tuneGrid= grid, 
+      trControl = ctrl.cross
+    )
+  svm.Fit
+}
+```
+## binary classification of Data with 2 attributes
+
+For visualization purposes, let's first look at a binary class data with two attributes.
+```{r}
+data1 <- read.table("ex8a.txt",sep="\t",header=T)
+head(data1)
+data1$class <- factor(data1$class)
+```
+The two classes are linearly non-separable
+```{r}
+ggplot(data=data1) + geom_point(aes(x=x,y=y,col=class))
+```
+Since, the two classes are linearly non-separable, a non linear svm is expected to work better than a linear svm. Lets train svm models on the given data set.
+```{r}
+intrain <- createDataPartition(y = data1$class,p = 0.8,list = FALSE) #split data
+assign("training", data1[intrain,])
+assign("testing",  data1[-intrain,])
+
+#fit svm models using the R functions defined above
+svm.poly.Fit<-do.PolyKernelSVM(training)
+svm.linear.Fit<-do.LinearKernelSVM(training)
+svm.radial.Fit<-do.RadialKernelSVM(training)
+print(svm.linear.Fit)
+print(svm.poly.Fit)
+print(svm.radial.Fit)
+```
+The results indicate that Radial Basis Kernel is the best in training. Let's perform prediction on the test set. The testing and training accuracies are similar.
+```{r}
+Pred <- predict(svm.radial.Fit,testing)
+cm<- confusionMatrix(Pred,testing$class)
+print(cm)
+```
+
+
+
+## Decision boundary visualization
+
+Now, lets visualize the decision boundary. First create a new testing data set as a grid of points and plot these points. Also overlay the original training set.
+```{r}
+x=seq(from=min(data1$x),to=max(data1$x),by=(max(data1$x)-min(data1$x))/100)
+y=seq(from=min(data1$y),to=max(data1$y),by=(max(data1$y)-min(data1$y))/100)
+new_data <- expand.grid(x=x,y=y)
+ggplot(data=new_data,aes(x=x,y=y)) + geom_point(alpha=0.2) + geom_point(data=training,aes(x=x,y=y,col=class))
+```
+
+Perform prediction on this new data set using the trained SVM radial kernel model. 
+```{r}
+Pred <- predict(svm.radial.Fit,new_data)
+#Pred <- predict(svm.radial.Fit,new_data,type = "prob") # for getting probabilities
+new_data$class <- Pred
+ggplot(data=new_data,aes(x=x,y=y,col=class)) + geom_point(alpha=0.2) + geom_point(data=training,aes(x=x,y=y,col=class))
+```
+Perform prediction on this new data set using the trained SVM linear kernel model. Here, We can see that the radial kernel is able to capture the non linearly in the data.
+```{r}
+Pred <- predict(svm.linear.Fit,new_data)
+new_data$class <- Pred
+ggplot(data=new_data,aes(x=x,y=y,col=class)) + geom_point(alpha=0.2) + geom_point(data=training,aes(x=x,y=y,col=class))
+```
+
+## Getting the support vectors and weights from radial basis model.
+
+Let's explore the trained model more. Getting the weights ($\alpha_{i}$'s) in the trained SVM model. 
+```{r}
+svm.radial.Fit$finalModel
+coef(svm.radial.Fit$finalModel)
+```
+Getting the support vectors (SVs) used. Note that the number of SVs is equal to number of weights ($\alpha_{i}$'s).
+```{r}
+#get the indices of the SVs
+I <- SVindex(svm.radial.Fit$finalModel)
+#get SVs using the indices
+SVs <- training[I,]
+SVs$SVs <- SVs$class
+#SVs
+print(SVs)
+
+Pred <- predict(svm.radial.Fit,new_data)
+new_data$class <- Pred
+ggplot(data=new_data,aes(x=x,y=y,col=class)) + geom_point(alpha=0.2) + geom_point(data=training,aes(x=x,y=y,col=class)) + geom_point(data=SVs,aes(x=x,y=y,col=SVs),shape=0,size=8) + ggtitle("SVs indicated by squares")
+```
+
+
+

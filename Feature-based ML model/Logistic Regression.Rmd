@@ -1,0 +1,59 @@
+---
+title: "Logistic Regression"
+author: "Vi Ly"
+date: "October 4, 2018"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Load file to an R data frame. Assume column name that represents the class label is "class"
+
+Prepare training 
+```{r}
+training <- read.csv('https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Train/4mertable.train.txt',header = TRUE)
+training <- training[,names(training) != "DNA"]
+#head(training)
+training <- training[sample(nrow(training), nrow(training)), ] #randomizes the rows
+training$Class[training$Class == "1"] <- "negative"
+training$Class[training$Class == "0"] <- "positive"
+training$Class <- factor(training$Class)
+```
+
+Preparing testing data
+```{r}
+testing = read.csv("https://raw.githubusercontent.com/OliShawn/KmerResearch/master/4merTable/Test/4mertable.test.txt")
+testing <- testing[,names(testing) != "DNA"]
+testing <- testing[sample(nrow(testing), nrow(testing)), ] #randomizes the rows
+testing$Class[testing$Class == "1"] <- "negative"
+testing$Class[testing$Class == "0"] <- "positive"
+testing$Class <- factor(testing$Class)
+```
+
+
+Load R libraries for model generation
+```{r}
+suppressMessages(library(caret))
+suppressMessages(library(e1071))
+```
+
+glm binary class logistic regression. No Tuning involved.
+```{r}
+glm_binomial <- function(training)
+{
+ glmb.fit <- train(class ~ ., data = training, method="glm",family="binomial")
+ glmb.fit
+}
+```
+
+glm multiclass logistic regression. No Tuning involved.
+```{r}
+
+glmnet_multinomial <- function(training)
+{
+ glm.fit <- train(class ~ ., data = training, method="glm",family="multinomial") 
+ glm.fit
+}
+```
