@@ -1,5 +1,9 @@
 # Deep-Learning-on-TAD-dataset
 
+Author: Vi Ly, Shawn Olichwier, John Henderson
+Mentor: Benjamin Soibam
+
+
 # Introduction:
 TADs are self-interacting regions in a DNA sequence. The functions of TADs are not fully understood but it is known that disrupting these boundaries can affect the expression of certain genes, leading to disease. However, the boundaries of TADs are highly conserved across different cell types even though the organization within a TAD may differ across cell types, which suggests an importance of the TAD boundaries. 
 
