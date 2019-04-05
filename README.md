@@ -1,7 +1,7 @@
 # Deep-Learning-on-TAD-dataset
 
-Author: Vi Ly, Shawn Olichwier, John Henderson
-Mentor: Benjamin Soibam
+**Author:** Vi Ly, Shawn Olichwier, John Henderson
+**Mentor**: Benjamin Soibam
 
 
 # Introduction:
